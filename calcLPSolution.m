@@ -4,19 +4,19 @@ function [T_Solution] = calcLPSolution(b,c0,A)
 %%
 c = c0;
 k = 0;
-tol=1e-10; 
+tol=1e-6; 
 maxit=50; 
 
 %%
-[m,n]=size(A); b=b(:); c=c(:); it=0; 
+[m,n]=size(A); b=b(:); c=c(:); it=0;  %b and c are made column matrix
 if (length(c)~=n || length(b)~=m),error('wrong dimensions'); end
-D=sign(sign(b)+.5); 
+D=sign(sign(b)+.5); % 0.5 could be reduced if addition causes change in the sign of elements
 D = diag(D);                    % initial (inverse) basis matrix
 A = [A D];                      % incorporate slack/artificial variables.Utilizing 2 phase method
 
 %%
-B = n+1:n+m;                    
-N = 1:n;                        
+B = n+1:n+m;    % initial basis                
+N = 1:n;        % intitial nonbasis                
 phase=1; xb=abs(b); s=[zeros(n,1);ones(m,1)];   % supercost 
 
 %%
@@ -34,7 +34,7 @@ while phase<3
          if maxit==inf
             disp(['LINPROG(',int2str(it),'): warning! degenerate vertex']);
          end
-         J=find(r<0); Nq=min(N(J)); q=find(N==Nq); % This line gets the first most column in NB which gives a -ve reduced cost. 
+         J=find(r<0); Nq=min(N(J)); q=find(N==Nq); % This line gets the firstmost column in NB which gives a -ve reduced cost. 
                                     % q is the location of that column in N                                                                                                     
       end 
       d = D*A(:,N(q)); % Descent Direction: d = -inv(B)*Nq.If dq >= 0, then the linear program is unbounded. Here d<=0 =>unbounded

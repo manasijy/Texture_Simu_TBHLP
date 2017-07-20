@@ -1,114 +1,61 @@
+function [gmatrix0] = main_lptaylRelax(filename,incremental_strain,n_iteration,varargin)
 
-clear
+cs = crystalSymmetry('-43m'); 
+ss = specimenSymmetry('mmm');
+g_file = filename; 
+namesplit = strsplit(filename,'.');
+name = namesplit(1); % namesplit(2) is extension
+gmatrix0 = txtfile2ori(g_file,cs,ss);
+plotTexture(gmatrix0,[1]);%(gmatrix0,cs,ss,[1]);
+if isempty(gmatrix0), return, end
 
-%% Input Block
-fprintf('This program calculates texture evolution with deformation strain \nfor e11=1 and e33=-1 rolling \n');
-prompt = 'The euler angle file name without .txt extension \n';
-name = input(prompt);
-g_file = [name, '.txt']; 
-% prompt = 'Please enter crystal strucutre f(fcc) and b(bcc)\n';
-% cryst_str = input(prompt);
-prompt = 'Please select type of slip\n f (full), p (only partial), fp (full+partial), ft(full+twin)\n';
-slip_type = input(prompt);
-prompt = 'Please select constraints: 0 (Full)\t 1 (Lath)\t 2 (PanCake)\n';
-constraints = input(prompt);
-prompt = 'Please enter maximum strain e.g. 2,3 etc \n';
-max_strain = input(prompt);
-prompt = 'Please enter incremental strain e.g. 0.05,0.1 etc \n';
-incr_e = input(prompt);
-prompt = 'Please select criteria to solve taylor ambiguity \n 0 (minVar), 1(maxVar), 2(minPlasticSpin), 3(wintenberger) \n';
-criteria = input(prompt);
+%% Get other inputs or set defaults
+
+if check_option(varargin,'slip_type')
+  slip_type = get_option(varargin,'slip_type');
+else
+  slip_type = 'f';
+end
+
+if check_option(varargin,'criteria')
+  criteria = get_option(varargin,'criteria');
+else
+  criteria = 0;
+end
+
+if check_option(varargin,'ConstraintsRelaxed')
+  ConstraintsRelaxed = get_option(varargin,'ConstraintsRelaxed');
+else
+  ConstraintsRelaxed = 0;
+end
+
+if check_option(varargin,'cryst_str')
+  cryst_str = get_option(varargin,'cryst_str');
+else
+  cryst_str = 0;
+end
+
 tic
-g = fopen(g_file);   
-g_matrix = textscan(g, '%f %f %f'); 
-fclose(g);
 
 %%
-A0 = [0,-0.408248290463863,-0.408248290463863,-0.408248290463863,...
-    -0.408248290463863,0,0.408248290463863,-0.408248290463863,...
-    -4.99959962173949e-17,-0.408248290463863,0.408248290463863,...
-    -4.99959962173949e-17,-0.235702260395516,-0.235702260395516,...
-    0.471404520791032,0.235702260395516,0.235702260395516,-0.471404520791032,...
-    0.235702260395516,-0.471404520791032,0.235702260395516,-0.471404520791032,...
-    0.235702260395516,0.235702260395516,0,0.408248290463863,0.408248290463863,...
-    0.408248290463863,0.408248290463863,0,-0.408248290463863,0.408248290463863,...
-    4.99959962173949e-17,0.408248290463863,-0.408248290463863,4.99959962173949e-17,...
-    0.235702260395516,0.235702260395516,-0.471404520791032,-0.235702260395516,...
-    -0.235702260395516,0.471404520791032,-0.235702260395516,0.471404520791032,...
-    -0.235702260395516,0.471404520791032,-0.235702260395516,-0.235702260395516;...
-    
-    -0.408248290463863,-2.49979981086974e-17,0.408248290463863,0.408248290463863,...
-    -2.49979981086974e-17,-0.408248290463863,-0.408248290463863,2.49979981086974e-17,...
-    -0.408248290463863,0.408248290463863,-2.49979981086974e-17,0.408248290463863,...
-    0.471404520791032,-0.235702260395516,-0.235702260395516,0.235702260395516,...
-    -0.471404520791032,0.235702260395516,0.235702260395516,0.235702260395516,...
-    -0.471404520791032,0.235702260395516,0.235702260395516,-0.471404520791032,...
-    0.408248290463863,2.49979981086974e-17,-0.408248290463863,-0.408248290463863,...
-    2.49979981086974e-17,0.408248290463863,0.408248290463863,-2.49979981086974e-17,...
-    0.408248290463863,-0.408248290463863,2.49979981086974e-17,-0.408248290463863,...
-    -0.471404520791032,0.235702260395516,0.235702260395516,-0.235702260395516,...
-    0.471404520791032,-0.235702260395516,-0.235702260395516,-0.235702260395516,...
-    0.471404520791032,-0.235702260395516,-0.235702260395516,0.471404520791032;...
-    
-    2*[0,0.204124145231932,0.204124145231932,0.204124145231932,0.204124145231932,...
-    -2.77555756156289e-17,0.204124145231932,-0.204124145231932,-2.77555756156289e-17,...
-    -0.204124145231932,0.204124145231932,2.77555756156289e-17,0.117851130197758,...
-    0.117851130197758,-0.235702260395516,-0.117851130197758,-0.117851130197758,...
-    0.235702260395516,0.117851130197758,-0.235702260395516,0.117851130197758,-0.235702260395516,...
-    0.117851130197758,0.117851130197758,0,-0.204124145231932,-0.204124145231932,...
-    -0.204124145231932,-0.204124145231932,2.77555756156289e-17,-0.204124145231932,...
-    0.204124145231932,2.77555756156289e-17,0.204124145231932,-0.204124145231932,...
-    -2.77555756156289e-17,-0.117851130197758,-0.117851130197758,0.235702260395516,...
-    0.117851130197758,0.117851130197758,-0.235702260395516,-0.117851130197758,0.235702260395516,...    
-    -0.117851130197758,0.235702260395516,-0.117851130197758,-0.117851130197758;...
-    
-    0.204124145231931,-2.77555756156289e-17,-0.204124145231932,0.204124145231932,...
-    -2.77555756156289e-17,-0.204124145231932,0.204124145231932,-2.77555756156289e-17,...
-    0.204124145231931,0.204124145231932,2.77555756156289e-17,0.204124145231932,...
-    -0.235702260395516,0.117851130197758,0.117851130197758,0.117851130197758,...
-    -0.235702260395516,0.117851130197758,-0.117851130197758,-0.117851130197758,...
-    0.235702260395516,0.117851130197758,0.117851130197758,-0.235702260395516,-0.204124145231931,...
-    2.77555756156289e-17,0.204124145231932,-0.204124145231932,2.77555756156289e-17,...
-    0.204124145231932,-0.204124145231932,2.77555756156289e-17,-0.204124145231931,...
-    -0.204124145231932,-2.77555756156289e-17,-0.204124145231932,0.235702260395516,...
-    -0.117851130197758,-0.117851130197758,-0.117851130197758,0.235702260395516,...
-    -0.117851130197758,0.117851130197758,0.117851130197758,-0.235702260395516,...
-    -0.117851130197758,-0.117851130197758,0.235702260395516;...
-    
-    -0.204124145231931,-0.204124145231932,-2.77555756156289e-17,...
-    -5.55111512312578e-17,0.204124145231931,0.204124145231932,0,0.204124145231932,...
-    0.204124145231932,0,0.204124145231932,0.204124145231931,0.117851130197758,...
-    -0.235702260395516,0.117851130197758,-0.235702260395516,0.117851130197758,...
-    0.117851130197758,-0.235702260395516,0.117851130197758,0.117851130197758,...
-    -0.117851130197758,0.235702260395516,-0.117851130197758,0.204124145231931,...
-    0.204124145231932,2.77555756156289e-17,5.55111512312578e-17,-0.204124145231931,...
-    -0.204124145231932,0,-0.204124145231932,-0.204124145231932,0,-0.204124145231932,...
-    -0.204124145231931,-0.117851130197758,0.235702260395516,-0.117851130197758,...
-    0.235702260395516,-0.117851130197758,-0.117851130197758,0.235702260395516,...
-    -0.117851130197758,-0.117851130197758,0.117851130197758,-0.235702260395516,0.117851130197758]];
 
-
-
+SlipSystem = SS_setFCC_fp_function(); % need to cover for other crystal systems
+A0 = getA(SlipSystem);
 
 %% Initializing the cost matrix according to type of slip mode
-% c = [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1];
-% full slip: n = 1-12,25-36 
-% partial slip: n=13-24,37-48
-% twin:n=13-24
-load('FCC_SSSet.mat','SlipSystem');
+
 switch slip_type
     case {'F', 'f'} % only perfect slip
-        n = [1:12,25:36];
-        
-        %A0(c(n)=1e12; % All partial modes are made costlier       
+        n = [1:12,25:36];       
+        %A0(c(n)=1e14; % All partial modes are made costlier       
     case {'P','p'} % only partial slip
         n = [13:24,37:48];
-%         c(n)=1e12; % All perfect modes are made costlier        
+%         c(n)=1e4; % All perfect modes are made costlier        
     case {'FP','fp','Fp','fP'} %both perfect and partial slips
         n = 1:48;
     case {'FT','ft','Ft','fT'}
         n = 1:36;
-%         c(n)=1e12; % All - partial modes are made costlier        
+%         c(n)=1e4; % All - partial modes are made costlier        
     otherwise
         warning('Unexpected slip type.\n {Default perfect slip is applied'); 
         n = [1:12,25:36];
@@ -116,16 +63,16 @@ switch slip_type
  A = A0(:,n);
  n_n = length(n);
  c = ones(1,n_n);
- c = [c,1e4,1e4,1e4,1e4,1e4,1e4];
+%  c = [c,1e4,1e4,1e4,1e4,1e4,1e4];
  SS_set = SlipSystem(n);       
 
-switch constraints
-    case 1 %only 13
-       c(n_n+1:n_n+2) = [0,0];
-    case 2  %only 23
-       c(n_n+3:n_n+4) = [0,0]; 
-    case 3 %only 12
-       c(n_n+5:n_n+6) = [0,0];
+switch ConstraintsRelaxed
+    case {1,2,3} %only 13
+       c(n_n+1:n_n+2) = [1,1];
+%     case 2  %only 23
+%        c(n_n+3:n_n+4) = [1,1]; 
+%     case 3 %only 12
+%        c(n_n+5:n_n+6) = [1,1];
     case 4 %13 and 23
         c(n_n+1:n_n+4) = [0,0,0,0];
     case 5 % 13,23 and 12
@@ -142,38 +89,31 @@ end
 % criteria = 'maxvar';
 % criteria = 'minplasticspin';
 
-gmatrix0 = rotation('Euler',[g_matrix{1,1},g_matrix{1,2},g_matrix{1,3}]*degree);
 gmatrix = gmatrix0;
 lg =  length(gmatrix);
 e_ext= [1,0,0;0,0,0;0,0,-1];
 e13 = [0,0,1;0,0,0;0,0,0];
 e23 = [0,0,0;0,0,1;0,0,0];
 e12 = [0,1,0;0,0,0;0,0,0];
-b = zeros(5,lg);
-n_steps = max_strain/incr_e;
+eR(:,:,1) = e13; eR(:,:,2) = e23; eR(:,:,3) = e12;
 new_gmatrix(:,1) = gmatrix;
 %% Calculation Block
 
-for j=1:1:n_steps
+for j=1:1:n_iteration
 
 for i=1:1:lg 
     DCMtrx = matrix(gmatrix(i));  
     e_grain=DCMtrx'*e_ext*DCMtrx;
     
     % Relax constraint setup
+    Arc = get_Arc(DCMtrx,eR,ConstraintsRelaxed);
     
-    RC13 = DCMtrx'*e13*DCMtrx;
-    RC23 = DCMtrx'*e23*DCMtrx;
-    RC12= DCMtrx'*e12*DCMtrx;
-    A13 = [RC13(1,1),-RC13(1,1);RC13(2,2),-RC13(2,2);RC13(2,3),-RC13(2,3);RC13(1,3),-RC13(1,3);RC13(1,2),-RC13(1,2)];
-    A23 = [RC23(1,1),-RC23(1,1);RC23(2,2),-RC23(2,2);RC23(2,3),-RC23(2,3);RC23(1,3),-RC23(1,3);RC23(1,2),-RC23(1,2)];
-    A12 = [RC12(1,1),-RC12(1,1);RC12(2,2),-RC12(2,2);RC12(2,3),-RC12(2,3);RC12(1,3),-RC12(1,3);RC12(1,2),-RC12(1,2)];
     % Relax constraint set
-    Arc = [A,A13,A23,A12]; 
+    A_in = [A, Arc]; 
     b = [e_grain(1,1);e_grain(2,2);2*e_grain(2,3);2*e_grain(1,3);2*e_grain(1,2)]; 
-    AllSolutions = calcLPSolution(Arc,b,c); 
-    [spin, UniqueSolution] = calculate_spin(SS_set,AllSolutions,criteria);
-    spin = incr_e*spin;
+    AllSolutions = calcLPSolution(b,c,A_in); 
+    [spin, UniqueSolution] = calculate_spin(AllSolutions,criteria,SS_set);
+    spin = incremental_strain*spin;
     gmatrix(i) = applySpin(-spin,DCMtrx); 
     new_gmatrix(i,j+1) = gmatrix(i);
     ActiveSS(i,j).ss= UniqueSolution.B;
@@ -185,17 +125,33 @@ end
 prompt = 'Do you want to save results; yes or no \n';
 reply = input(prompt,'s');
 if strcmp(reply,'yes')
+    disp('Active slip systems with respective shears \nwill be stored in ActiveSSData matrix in the work space\n')
+    disp('Texture data at each iteration will be stored\n in the folder filename in the current path\n')
     folderpath = resmet_input(name,new_gmatrix);
-
     ActiveSSData = [folderpath '\' 'ActiveSSData.mat'];
-    save(ActiveSSData,'ActiveSS');
-    
+    save(ActiveSSData,'ActiveSS');    
     %%%Following lines to save o/p euler angles in file
     %     eu_gmat = Euler(new_gmatrix)/degree;
     %     euler_angles(name,new_gmatrix);
-else break
+% else
+%     return
 end
 %%
-
+prompt = 'Do you want to plot results; yes or no \n';
+reply = input(prompt,'s');
+if strcmp(reply,'yes')
+   disp('Which iterations you want to plot');
+   whichOnes = input('For only last iteration: type l, for all enter 0\n else enter iteration numbers e.g. 1,2,3\n');
+   switch whichOnes
+       case 'l'
+           iteration_list = n_iteration+1;
+       case '0'
+           iteration_list = 1:(n_iteration+1);
+       otherwise
+           iteration_list = sscanf(whichOnes,strcat("%d",','))';
+           iteration_list = [1,iteration_list+1];
+   end  
+   plotTexture(new_gmatrix,iteration_list) 
+end
 toc
 
